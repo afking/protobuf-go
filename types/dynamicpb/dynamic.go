@@ -104,6 +104,9 @@ func (m *Message) Range(f func(pref.FieldDescriptor, pref.Value) bool) {
 // See protoreflect.Message for details.
 func (m *Message) Has(fd pref.FieldDescriptor) bool {
 	m.checkField(fd)
+	if m.known == nil {
+		return false
+	}
 	if fd.IsExtension() && m.ext[fd.Number()] != fd {
 		return false
 	}
@@ -129,23 +132,25 @@ func (m *Message) Get(fd pref.FieldDescriptor) pref.Value {
 	m.checkField(fd)
 	num := fd.Number()
 	if fd.IsExtension() {
-		if fd != m.ext[num] {
+		if m.ext == nil || fd != m.ext[num] {
 			return fd.(pref.ExtensionTypeDescriptor).Type().Zero()
 		}
 		return m.known[num]
 	}
-	if v, ok := m.known[num]; ok {
-		switch {
-		case fd.IsMap():
-			if v.Map().Len() > 0 {
+	if m.known != nil {
+		if v, ok := m.known[num]; ok {
+			switch {
+			case fd.IsMap():
+				if v.Map().Len() > 0 {
+					return v
+				}
+			case fd.IsList():
+				if v.List().Len() > 0 {
+					return v
+				}
+			default:
 				return v
 			}
-		case fd.IsList():
-			if v.List().Len() > 0 {
-				return v
-			}
-		default:
-			return v
 		}
 	}
 	switch {
@@ -307,7 +312,7 @@ func NewMessageType(desc pref.MessageDescriptor) pref.MessageType {
 }
 
 func (mt messageType) New() pref.Message                  { return NewMessage(mt.desc) }
-func (mt messageType) Zero() pref.Message                 { return NewMessage(mt.desc) }
+func (mt messageType) Zero() pref.Message                 { return &Message{typ: messageType{mt.desc}} }
 func (mt messageType) Descriptor() pref.MessageDescriptor { return mt.desc }
 
 type emptyList struct {
